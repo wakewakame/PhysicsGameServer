@@ -12,26 +12,54 @@
 				canvas.height = window.innerHeight;
 
 				const socket = new WebSocket('ws://192.168.11.3:8080');
+
+				let drag_flag = false;
+				let mouse = {"x": 0.0, "y": 0.0};
 				socket.addEventListener("open", e => {
-					canvas.addEventListener("click", () => {
-						socket.send("click");
+					canvas.addEventListener("mousedown", e => {
+						drag_flag = true;
+						mouse = { "x": e.offsetX, "y": e.offsetY };
+					});
+					canvas.addEventListener("mouseup", e => {
+						drag_flag = false;
+					});
+					canvas.addEventListener("mousemove", e => {
+						mouse = { "x": e.offsetX, "y": e.offsetY };
+					});
+					canvas.addEventListener("touchstart", e => {
+						drag_flag = true;
+						mouse = { "x": e.touches[0].clientX, "y": e.touches[0].clientY };
+					});
+					canvas.addEventListener("touchend", e => {
+						drag_flag = false;
+					});
+					canvas.addEventListener("touchmove", e => {
+						mouse = { "x": e.touches[0].clientX, "y": e.touches[0].clientY };
+						event.preventDefault();
 					});
 				});
 				socket.addEventListener("message", e => {
-					const points = JSON.parse(e.data);
+					const [points, index] = JSON.parse(e.data);
+					const scale = Math.min(canvas.width, canvas.height) * 0.5;
 
-					console.log(points);
 					ctx.clearRect(0, 0, canvas.width, canvas.height);
-					for(const point of points) {
-						const scale = Math.min(canvas.width, canvas.height) * 0.05;
+					for(let i = 0; i < points.length; i++) {
+						const point = points[i];
 						const x =  point[0] * scale + canvas.width  * 0.5;
-						const y = -point[1] * scale + canvas.height * 0.5;
-						const r = 0.5 * scale;
+						const y = -point[1] * scale + canvas.height;
+						const r = 0.2 * scale;
 						ctx.beginPath();
 						ctx.arc(x, y, r, 0.0, 2.0 * Math.PI);
-						ctx.moveTo(0.0, canvas.height * 0.5);
-						ctx.lineTo(canvas.width, canvas.height * 0.5);
-						ctx.stroke();
+						if (i === index) { ctx.fill(); }
+						else { ctx.stroke(); }
+					}
+
+					if (drag_flag) {
+						const x = (mouse["x"] - canvas.width * 0.5) / scale - points[index][0];
+						const y = (canvas.height - mouse["y"]) / scale - points[index][1];
+						const target = { "x": x, "y": y };
+						const json = JSON.stringify(target);
+						socket.send(json);
 					}
 				});
 			});

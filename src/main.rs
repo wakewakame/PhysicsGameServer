@@ -12,9 +12,6 @@ use serde::{Deserialize, Serialize};
 mod websocket;
 mod protocol;
 
-#[derive(Serialize, Deserialize)]
-struct Points(Vec<(f32, f32)>);
-
 async fn app(
     send_map: websocket::SendMap,
     mut receive_receiver: websocket::ReceiveReceiver
@@ -26,7 +23,7 @@ async fn app(
     let mut collider_set = ColliderSet::new();
 
     /* Create the ground. */
-    let collider = ColliderBuilder::cuboid(100.0, 0.1).build();
+    let collider = ColliderBuilder::cuboid(100.0, 1.0).translation(vector![0.0, -1.0]).build();
     collider_set.insert(collider);
 
     let mut player_map: protocol::PlayerMap = HashMap::new();
@@ -48,9 +45,14 @@ async fn app(
             match receive { 
                 websocket::Receive::Connect(addr) => {
                     let rigid_body = RigidBodyBuilder::new_dynamic()
-                        .translation(vector![0.0, 10.0])
+                        .linear_damping(0.8)
+                        .angular_damping(2.0)
+                        .translation(vector![0.0, 0.6])
                         .build();
-                    let collider = ColliderBuilder::ball(0.5).restitution(0.7).build();
+                    let collider = ColliderBuilder::ball(0.2)
+                        .restitution(0.45)
+                        .density(1.0)
+                        .build();
                     let ball_body_handle = rigid_body_set.insert(rigid_body);
                     collider_set.insert_with_parent(collider, ball_body_handle, &mut rigid_body_set);
                     player_map.insert(addr, protocol::Player::new(ball_body_handle));
@@ -66,10 +68,18 @@ async fn app(
                     }
                 },
                 websocket::Receive::Message(addr, message) => {
-                    if let Some(player) = player_map.get(&addr) {
-                        rigid_body_set[player.handle]
-                            .set_translation(vector!(0.0, 10.0), true);
+                    #[derive(Serialize, Deserialize)]
+                    struct Point { x: f32, y: f32 }
+                    if let websocket::Message::Text(message) = message {
+                        let point: serde_json::Result<Point> = serde_json::from_str(&message);
+                        if let serde_json::Result::Ok(point) = point {
+                            if let Some(player) = player_map.get(&addr) {
+                                rigid_body_set[player.handle]
+                                    .set_linvel(vector!(point.x, point.y) * 10.0, true);
+                            }
+                        }
                     }
+
                 }
             }
         }
@@ -88,19 +98,23 @@ async fn app(
             &event_handler,
         );
 
-        let points = player_map
+        #[derive(Serialize, Deserialize)]
+        struct Points(Vec<(f32, f32)>, u64);
+
+        let points = send_map.lock().unwrap()
             .iter()
-            .map(|(_, player)| player.handle)
-            .flat_map(|handle| rigid_body_set.get(handle))
+            .flat_map(|(addr, _)| player_map.get(addr))
+            .flat_map(|player| rigid_body_set.get(player.handle))
             .map(|ball_body| (
                 ball_body.translation().x,
                 ball_body.translation().y,
             ))
             .collect();
-        let points = Points(points);
-        let json = serde_json::to_string(&points).unwrap();
+        let mut points = Points(points, 0);
 
         for (_, sender) in send_map.lock().unwrap().iter_mut() {
+            let json = serde_json::to_string(&points).unwrap();
+            points.1 += 1;
             let _ = sender.try_send(websocket::Message::Text(json.clone()));
         }
         tokio::time::sleep(tokio::time::Duration::from_millis(duration)).await;
