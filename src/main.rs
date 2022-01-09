@@ -49,7 +49,7 @@ async fn app(
                         .angular_damping(2.0)
                         .translation(vector![0.0, 0.6])
                         .build();
-                    let collider = ColliderBuilder::ball(0.2)
+                    let collider = ColliderBuilder::cuboid(0.3, 0.2)
                         .restitution(0.45)
                         .density(1.0)
                         .build();
@@ -99,7 +99,7 @@ async fn app(
         );
 
         #[derive(Serialize, Deserialize)]
-        struct Points(Vec<(f32, f32)>, u64);
+        struct Points(Vec<(f32, f32, f32, f32)>, u64);
 
         let points = send_map.lock().unwrap()
             .iter()
@@ -108,6 +108,8 @@ async fn app(
             .map(|ball_body| (
                 ball_body.translation().x,
                 ball_body.translation().y,
+                ball_body.rotation().re,
+                ball_body.rotation().im,
             ))
             .collect();
         let mut points = Points(points, 0);

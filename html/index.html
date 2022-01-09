@@ -42,17 +42,36 @@
 					const [points, index] = JSON.parse(e.data);
 					const scale = Math.min(canvas.width, canvas.height) * 0.5;
 
+					const complex_cross = (re1, im1, re2, im2) => {
+						const re = re1 * re2 - im1 * im2;
+						const im = re1 * im2 + re2 * im1;
+						return [re, im];
+					};
+
 					ctx.clearRect(0, 0, canvas.width, canvas.height);
+					ctx.save()
 					for(let i = 0; i < points.length; i++) {
 						const point = points[i];
-						const x =  point[0] * scale + canvas.width  * 0.5;
+						const x =  point[0] * scale + canvas.width * 0.5;
 						const y = -point[1] * scale + canvas.height;
-						const r = 0.2 * scale;
+						const re = point[2];
+						const im = point[3];
+						const w = 0.2 * scale;
+						const h = 0.2 * scale;
+						const [x1, y1] = complex_cross(-h, -w, im, re);
+						const [x2, y2] = complex_cross(-h, +w, im, re);
+						const [x3, y3] = complex_cross(+h, +w, im, re);
+						const [x4, y4] = complex_cross(+h, -w, im, re);
 						ctx.beginPath();
-						ctx.arc(x, y, r, 0.0, 2.0 * Math.PI);
+						ctx.moveTo(x + x1, y + y1);
+						ctx.lineTo(x + x2, y + y2);
+						ctx.lineTo(x + x3, y + y3);
+						ctx.lineTo(x + x4, y + y4);
+						ctx.closePath();
 						if (i === index) { ctx.fill(); }
 						else { ctx.stroke(); }
 					}
+					ctx.restore();
 
 					if (drag_flag) {
 						const x = (mouse["x"] - canvas.width * 0.5) / scale - points[index][0];
