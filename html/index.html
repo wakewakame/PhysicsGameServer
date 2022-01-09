@@ -1,0 +1,44 @@
+<html>
+	<head>
+		<script type="module">
+			document.addEventListener("DOMContentLoaded", () => {
+				const canvas = document.getElementById("canvas");
+				const ctx = canvas.getContext("2d");
+				window.addEventListener("resize", _ => {
+					canvas.width = window.innerWidth;
+					canvas.height = window.innerHeight;
+				});
+				canvas.width = window.innerWidth;
+				canvas.height = window.innerHeight;
+
+				const socket = new WebSocket('ws://192.168.11.3:8080');
+				socket.addEventListener("open", e => {
+					canvas.addEventListener("click", () => {
+						socket.send("click");
+					});
+				});
+				socket.addEventListener("message", e => {
+					const points = JSON.parse(e.data);
+
+					console.log(points);
+					ctx.clearRect(0, 0, canvas.width, canvas.height);
+					for(const point of points) {
+						const scale = Math.min(canvas.width, canvas.height) * 0.05;
+						const x =  point[0] * scale + canvas.width  * 0.5;
+						const y = -point[1] * scale + canvas.height * 0.5;
+						const r = 0.5 * scale;
+						ctx.beginPath();
+						ctx.arc(x, y, r, 0.0, 2.0 * Math.PI);
+						ctx.moveTo(0.0, canvas.height * 0.5);
+						ctx.lineTo(canvas.width, canvas.height * 0.5);
+						ctx.stroke();
+					}
+				});
+			});
+		</script>
+	</head>
+	<body style="margin: 0px; border: 0px; padding: 0px;">
+		<canvas id="canvas" style="margin: 0px; border: 0px; padding: 0px; width: 100%; height: 100%;">
+		</canvas>
+	</body>
+</html>
