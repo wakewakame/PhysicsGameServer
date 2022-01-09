@@ -3,11 +3,14 @@ use std::{
     io::Error as IoError,
     collections::HashMap,
     result::Result,
+    net::SocketAddr,
 };
 
 use rapier2d::prelude::*;
 
 use serde::{Deserialize, Serialize};
+
+use rand::Rng;
 
 mod websocket;
 mod protocol;
@@ -40,6 +43,7 @@ async fn app(
     let physics_hooks = ();
     let event_handler = ();
 
+    let mut rng: rand::rngs::StdRng = rand::SeedableRng::from_seed([13 as u8; 32]);
     loop {
         while let Ok(Some(receive)) = receive_receiver.try_next() {
             match receive { 
@@ -47,7 +51,10 @@ async fn app(
                     let rigid_body = RigidBodyBuilder::new_dynamic()
                         .linear_damping(0.8)
                         .angular_damping(2.0)
-                        .translation(vector![0.0, 0.6])
+                        .translation(vector![
+                            rng.gen_range(-1.0...1.0),
+                            rng.gen_range(0.5...1.0)
+                        ])
                         .build();
                     let collider = ColliderBuilder::cuboid(0.3, 0.2)
                         .restitution(0.45)
@@ -56,30 +63,52 @@ async fn app(
                     let ball_body_handle = rigid_body_set.insert(rigid_body);
                     collider_set.insert_with_parent(collider, ball_body_handle, &mut rigid_body_set);
                     player_map.insert(addr, protocol::Player::new(ball_body_handle));
+                    println!(
+                        "player_number: {}, session_number: {}",
+                        player_map.len(),
+                        send_map.lock().unwrap().len()
+                    );
                 },
                 websocket::Receive::Disconnect(addr) => {
-                    if let Some(player) = player_map.get(&addr) {
+                    // receive_channelのキューの上限を超えて同時切断が発生すると
+                    // Disconnectイベントの発生漏れが起こる。
+                    // そのため現在接続されているセッションに存在しないアドレスを
+                    // このタイミングで確認し、削除する。
+                    let send_map = send_map.lock().unwrap();
+                    let delete_addrs = player_map
+                        .iter()
+                        .map(|(addr, _)| *addr)
+                        .filter(|addr| !send_map.contains_key(&addr))
+                        .collect::<Vec<SocketAddr>>();
+
+                    for addr in delete_addrs.iter() {
                         rigid_body_set.remove(
-                            player.handle,
+                            player_map.get(&addr).unwrap().handle,
                             &mut island_manager,
                             &mut collider_set,
                             &mut joint_set,
                         );
+                        player_map.remove(&addr);
                     }
+
+                    println!(
+                        "player_number: {}, session_number: {}",
+                        player_map.len(),
+                        send_map.len()
+                    );
                 },
                 websocket::Receive::Message(addr, message) => {
                     #[derive(Serialize, Deserialize)]
                     struct Point { x: f32, y: f32 }
-                    if let websocket::Message::Text(message) = message {
-                        let point: serde_json::Result<Point> = serde_json::from_str(&message);
-                        if let serde_json::Result::Ok(point) = point {
-                            if let Some(player) = player_map.get(&addr) {
+                    if let Some(player) = player_map.get(&addr) {
+                        if let websocket::Message::Text(message) = message {
+                            let point: serde_json::Result<Point> = serde_json::from_str(&message);
+                            if let serde_json::Result::Ok(point) = point {
                                 rigid_body_set[player.handle]
                                     .set_linvel(vector!(point.x, point.y) * 10.0, true);
                             }
                         }
                     }
-
                 }
             }
         }

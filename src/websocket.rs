@@ -31,12 +31,9 @@ async fn handle_connection(
     mut receive_sender: ReceiveSender,
     send_channel_buffer_size: usize,
 ) {
-    println!("Incoming TCP connection from: {}", addr);
-
     let ws_stream = tokio_tungstenite::accept_async(raw_stream)
         .await
         .expect("Error during the websocket handshake occurred");
-    println!("WebSocket connection established: {}", addr);
 
     // Insert the write part of this peer to the peer map.
     let (tx, rx) = channel(send_channel_buffer_size);
@@ -55,7 +52,6 @@ async fn handle_connection(
     pin_mut!(broadcast_incoming, receive_from_others);
     future::select(broadcast_incoming, receive_from_others).await;
 
-    println!("{} disconnected", &addr);
     send_map.lock().unwrap().remove(&addr);
     let _ = receive_sender.try_send(Receive::Disconnect(addr));
 }
@@ -69,7 +65,6 @@ pub async fn launch(
     // Create the event loop and TCP listener we'll accept connections on.
     let try_socket = TcpListener::bind(&addr).await;
     let listener = try_socket.expect("Failed to bind");
-    println!("Listening on: {}", addr);
 
     // Let's spawn the handling of each connection in a separate task.
     while let Ok((stream, addr)) = listener.accept().await {
